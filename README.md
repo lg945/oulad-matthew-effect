@@ -33,6 +33,9 @@ requirements.txt  Python dependencies
   scripts use the raw log when it is present and otherwise fall back to the
   derived table, which reproduces the same numbers; the behavioural check is
   skipped with a notice when `behavior.csv` is absent.
+  The raw submission log is expected at
+  `data/bepkt/raw_data/submission.csv` if you want to re-run the raw-data
+  path; it is excluded from version control (see `.gitattributes`).
 - **Processed OULAD CCC samples** used by most scripts: `data/ccc_final.csv`
   and `data/ccc_complete.csv`.
 
