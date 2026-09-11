@@ -17,30 +17,43 @@ from sklearn.preprocessing import StandardScaler
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 warnings.filterwarnings('ignore')
 
-BASE = rREPO_ROOT
+BASE = REPO_ROOT
 ART = os.path.join(BASE, 'artifacts')
 os.makedirs(ART, exist_ok=True)
 
 # ---------- Load & build ----------
-sub = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/submission.csv'))
-sub['create_time'] = pd.to_datetime(sub['create_time'], utc=True)
-prob = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/problem.csv'))
-sub = sub.merge(prob[['id', 'difficulty']], left_on='problem_id', right_on='id',
-                how='left', suffixes=('', '_prob'))
+RAW_LOG = os.path.join(BASE, 'data/bepkt/raw_data/submission.csv')
+DERIVED = os.path.join(BASE, 'data/bepkt/bepkt_user_features.csv')
 
-user = sub.groupby('user_id').agg(
-    total_submissions=('id', 'count'),
-    unique_problems_attempted=('problem_id', 'nunique'),
-    accepted_problems=('problem_id', lambda x: x[sub.loc[x.index, 'result'] == 0].nunique()),
-    accepted_count=('result', lambda x: (x == 0).sum())).reset_index()
-fs = sub.sort_values(['user_id', 'create_time']).groupby('user_id').first().reset_index()
-user['first_result'] = fs.set_index('user_id').loc[user['user_id'], 'result'].values
-user['D_prior'] = (user['first_result'] == 0).astype(int)
-user['acceptance_rate'] = user['accepted_count'] / user['total_submissions']
-user['Y_low_completion'] = (user['accepted_problems'] < 5).astype(int)
+if os.path.exists(RAW_LOG):
+    sub = pd.read_csv(RAW_LOG)
+    sub['create_time'] = pd.to_datetime(sub['create_time'], utc=True)
+    prob = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/problem.csv'))
+    sub = sub.merge(prob[['id', 'difficulty']], left_on='problem_id', right_on='id',
+                    how='left', suffixes=('', '_prob'))
 
-ad = sub.groupby('user_id')['create_time'].apply(lambda x: x.dt.date.nunique()).reset_index(name='unique_active_days')
-user = user.merge(ad, on='user_id', how='left')
+    user = sub.groupby('user_id').agg(
+        total_submissions=('id', 'count'),
+        unique_problems_attempted=('problem_id', 'nunique'),
+        accepted_problems=('problem_id', lambda x: x[sub.loc[x.index, 'result'] == 0].nunique()),
+        accepted_count=('result', lambda x: (x == 0).sum())).reset_index()
+    fs = sub.sort_values(['user_id', 'create_time']).groupby('user_id').first().reset_index()
+    user['first_result'] = fs.set_index('user_id').loc[user['user_id'], 'result'].values
+    user['D_prior'] = (user['first_result'] == 0).astype(int)
+    user['acceptance_rate'] = user['accepted_count'] / user['total_submissions']
+    user['Y_low_completion'] = (user['accepted_problems'] < 5).astype(int)
+
+    ad = sub.groupby('user_id')['create_time'].apply(lambda x: x.dt.date.nunique()).reset_index(name='unique_active_days')
+    user = user.merge(ad, on='user_id', how='left')
+elif os.path.exists(DERIVED):
+    print('[info] raw submission log not present; loading precomputed per-user features')
+    print('       from', DERIVED)
+    user = pd.read_csv(DERIVED)
+else:
+    raise FileNotFoundError(
+        'Neither the raw submission log nor the derived feature table was found. '
+        'Place submission.csv in data/bepkt/raw_data/ (see README), or restore '
+        'data/bepkt/bepkt_user_features.csv.')
 
 user['log_submissions'] = np.log1p(user['total_submissions'])
 user['log_problems'] = np.log1p(user['unique_problems_attempted'])

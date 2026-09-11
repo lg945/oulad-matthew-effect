@@ -10,7 +10,7 @@ accompanying manuscript.
 ## Contents
 
 ```
-data/             processed analysis tables (OULAD CCC sample; BePKT problem metadata)
+data/             processed analysis tables (OULAD CCC sample; BePKT per-user features and problem metadata)
 figures/          static PNG outputs of all figures plus the graphical abstract
 scripts/          analysis scripts, numbered in execution order
 requirements.txt  Python dependencies
@@ -23,11 +23,16 @@ requirements.txt  Python dependencies
   Download the eight `.parquet` tables into `data/raw/` before running the
   Stage-4 scripts (`05_blocked_analyses.py`). The raw OULAD tables are not
   redistributed here.
-- **BePKT** online-judge platform. The problem metadata table is included at
-  `data/bepkt/raw_data/problem.csv`. The raw submission log (~200 MB) is not
-  redistributed here; it can be obtained from the original BePKT dataset
-  (Zhu et al., 2022). `06_bepkt_replication.py` derives the per-user features
-  used in the models from that log.
+- **BePKT** online-judge platform. Two files are included:
+  `data/bepkt/raw_data/problem.csv` (problem metadata) and
+  `data/bepkt/bepkt_user_features.csv`, a compact per-user feature table
+  (N = 906) covering submission volume, problem breadth, practice regularity and
+  the early-standing indicator. The raw submission log (~203 MB) and the
+  behavioural activity log (~82 MB) are not redistributed here; they can be
+  obtained from the original BePKT dataset (Zhu et al., 2022). The cross-dataset
+  scripts use the raw log when it is present and otherwise fall back to the
+  derived table, which reproduces the same numbers; the behavioural check is
+  skipped with a notice when `behavior.csv` is absent.
 - **Processed OULAD CCC samples** used by most scripts: `data/ccc_final.csv`
   and `data/ccc_complete.csv`.
 
@@ -36,6 +41,7 @@ requirements.txt  Python dependencies
 | Script | Purpose |
 |--------|---------|
 | 00_clean_data.py | Builds the OULAD CCC analysis sample |
+| 00b_build_bepkt_features.py | Builds the per-user BePKT feature table from the raw submission log (needed only if you have the raw log) |
 | 01_descriptive.py | Descriptive statistics and group comparisons |
 | 02_main_ols_models.py | OLS interaction models: participation threshold, participation intensity, time windows, and the multi-pathway model (withdrawal and achievement outcomes) |
 | 02b_engagement_profiles.py | Multi-dimensional engagement profiles by education group |

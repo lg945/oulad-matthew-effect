@@ -5,25 +5,37 @@ import statsmodels.api as sm
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 warnings.filterwarnings('ignore')
-BASE = rREPO_ROOT
+BASE = REPO_ROOT
 
-sub = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/submission.csv'))
-sub['create_time'] = pd.to_datetime(sub['create_time'], utc=True)
-prob = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/problem.csv'))
-sub = sub.merge(prob[['id', 'difficulty']], left_on='problem_id', right_on='id', how='left', suffixes=('', '_prob'))
-user = sub.groupby('user_id').agg(
-    total_submissions=('id', 'count'),
-    unique_problems_attempted=('problem_id', 'nunique'),
-    accepted_problems=('problem_id', lambda x: x[sub.loc[x.index, 'result'] == 0].nunique()),
-    accepted_count=('result', lambda x: (x == 0).sum())).reset_index()
-fs = sub.sort_values(['user_id', 'create_time']).groupby('user_id').first().reset_index()
-user['first_result'] = fs.set_index('user_id').loc[user['user_id'], 'result'].values
-user['D_prior'] = (user['first_result'] == 0).astype(int)
-user['acceptance_rate'] = user['accepted_count'] / user['total_submissions']
-user['Y_low_completion'] = (user['accepted_problems'] < 5).astype(int)
-user['log_submissions'] = np.log1p(user['total_submissions'])
-user['log_problems'] = np.log1p(user['unique_problems_attempted'])
-ad = sub.groupby('user_id')['create_time'].apply(lambda x: x.dt.date.nunique()).reset_index(name='unique_active_days')
+RAW_LOG = os.path.join(BASE, 'data/bepkt/raw_data/submission.csv')
+DERIVED = os.path.join(BASE, 'data/bepkt/bepkt_user_features.csv')
+if os.path.exists(RAW_LOG):
+    sub = pd.read_csv(RAW_LOG)
+    sub['create_time'] = pd.to_datetime(sub['create_time'], utc=True)
+    prob = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/problem.csv'))
+    sub = sub.merge(prob[['id', 'difficulty']], left_on='problem_id', right_on='id', how='left', suffixes=('', '_prob'))
+    user = sub.groupby('user_id').agg(
+        total_submissions=('id', 'count'),
+        unique_problems_attempted=('problem_id', 'nunique'),
+        accepted_problems=('problem_id', lambda x: x[sub.loc[x.index, 'result'] == 0].nunique()),
+        accepted_count=('result', lambda x: (x == 0).sum())).reset_index()
+    fs = sub.sort_values(['user_id', 'create_time']).groupby('user_id').first().reset_index()
+    user['first_result'] = fs.set_index('user_id').loc[user['user_id'], 'result'].values
+    user['D_prior'] = (user['first_result'] == 0).astype(int)
+    user['acceptance_rate'] = user['accepted_count'] / user['total_submissions']
+    user['Y_low_completion'] = (user['accepted_problems'] < 5).astype(int)
+    user['log_submissions'] = np.log1p(user['total_submissions'])
+    user['log_problems'] = np.log1p(user['unique_problems_attempted'])
+    ad = sub.groupby('user_id')['create_time'].apply(lambda x: x.dt.date.nunique()).reset_index(name='unique_active_days')
+elif os.path.exists(DERIVED):
+    print('[info] raw submission log not present; loading precomputed per-user features from', DERIVED)
+    user = pd.read_csv(DERIVED)
+    user['log_submissions'] = np.log1p(user['total_submissions'])
+    user['log_problems'] = np.log1p(user['unique_problems_attempted'])
+    ad = user[['user_id']].copy()   # unique_active_days already present
+else:
+    raise FileNotFoundError(
+        'Neither the raw submission log nor the derived feature table was found; see README for data setup.')
 user = user.merge(ad, on='user_id', how='left')
 user['log_active_days'] = np.log1p(user['unique_active_days'])
 for v in ['log_submissions', 'log_problems', 'log_active_days']:

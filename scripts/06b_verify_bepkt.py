@@ -6,30 +6,41 @@ import statsmodels.api as sm
 from scipy import stats
 warnings.filterwarnings('ignore')
 
-BASE = rREPO_ROOT
+BASE = REPO_ROOT
 
 # ---- load like redraw script ----
-sub = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/submission.csv'))
-sub['create_time'] = pd.to_datetime(sub['create_time'], utc=True)
-prob = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/problem.csv'))
-sub = sub.merge(prob[['id', 'difficulty']], left_on='problem_id', right_on='id', how='left', suffixes=('', '_prob'))
+RAW_LOG = os.path.join(BASE, 'data/bepkt/raw_data/submission.csv')
+DERIVED = os.path.join(BASE, 'data/bepkt/bepkt_user_features.csv')
+if os.path.exists(RAW_LOG):
+    sub = pd.read_csv(RAW_LOG)
+    sub['create_time'] = pd.to_datetime(sub['create_time'], utc=True)
+    prob = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/problem.csv'))
+    sub = sub.merge(prob[['id', 'difficulty']], left_on='problem_id', right_on='id', how='left', suffixes=('', '_prob'))
 
-user = sub.groupby('user_id').agg(
-    total_submissions=('id', 'count'),
-    first_sub_time=('create_time', 'min'),
-    last_sub_time=('create_time', 'max'),
-    unique_problems_attempted=('problem_id', 'nunique'),
-    accepted_problems=('problem_id', lambda x: x[sub.loc[x.index, 'result'] == 0].nunique()),
-    accepted_count=('result', lambda x: (x == 0).sum()),
-    unique_active_days=('create_time', lambda x: x.dt.date.nunique()),
-    mid_high_attempted=('difficulty', lambda x: (x.isin(['Mid', 'High'])).sum()),
-).reset_index()
+    user = sub.groupby('user_id').agg(
+        total_submissions=('id', 'count'),
+        first_sub_time=('create_time', 'min'),
+        last_sub_time=('create_time', 'max'),
+        unique_problems_attempted=('problem_id', 'nunique'),
+        accepted_problems=('problem_id', lambda x: x[sub.loc[x.index, 'result'] == 0].nunique()),
+        accepted_count=('result', lambda x: (x == 0).sum()),
+        unique_active_days=('create_time', lambda x: x.dt.date.nunique()),
+        mid_high_attempted=('difficulty', lambda x: (x.isin(['Mid', 'High'])).sum()),
+    ).reset_index()
 
-first_sub = sub.sort_values(['user_id', 'create_time']).groupby('user_id').first().reset_index()
-user['first_result'] = first_sub.set_index('user_id').loc[user['user_id'], 'result'].values
-user['D_prior'] = (user['first_result'] == 0).astype(int)
-user['acceptance_rate'] = user['accepted_count'] / user['total_submissions']
-user['Y_low_completion'] = (user['accepted_problems'] < 5).astype(int)
+    first_sub = sub.sort_values(['user_id', 'create_time']).groupby('user_id').first().reset_index()
+    user['first_result'] = first_sub.set_index('user_id').loc[user['user_id'], 'result'].values
+    user['D_prior'] = (user['first_result'] == 0).astype(int)
+    user['acceptance_rate'] = user['accepted_count'] / user['total_submissions']
+    user['Y_low_completion'] = (user['accepted_problems'] < 5).astype(int)
+elif os.path.exists(DERIVED):
+    print('[info] raw submission log not present; loading precomputed per-user features from', DERIVED)
+    user = pd.read_csv(DERIVED)
+    for c in ['first_sub_time', 'last_sub_time']:
+        user[c] = pd.to_datetime(user[c], utc=True, errors='coerce')
+else:
+    raise FileNotFoundError(
+        'Neither the raw submission log nor the derived feature table was found; see README for data setup.')
 user['log_submissions'] = np.log1p(user['total_submissions'])
 user['log_problems'] = np.log1p(user['unique_problems_attempted'])
 user['log_active_days'] = np.log1p(user['unique_active_days'])
@@ -142,7 +153,14 @@ print(f'  mediation ratio (ab/c) = {ab/c:.3f}')
 print('\n'+'='*70)
 print('BEHAVIORAL: Contest Participation x D_prior (N=651)')
 print('='*70)
-beh = pd.read_csv(os.path.join(BASE, 'data/bepkt/raw_data/behavior.csv'))
+BEHAV = os.path.join(BASE, 'data/bepkt/raw_data/behavior.csv')
+if not os.path.exists(BEHAV):
+    print('[info] behavior.csv (large raw activity log) is not redistributed with this')
+    print('       repository; the behavioural contest-engagement check is skipped.')
+    print('       See README > Data sources for how to obtain it.')
+    print('\nDONE')
+    raise SystemExit(0)
+beh = pd.read_csv(BEHAV)
 beh['timestamp'] = pd.to_datetime(beh['timestamp'], utc=True)
 def ext_sid(a):
     try:
